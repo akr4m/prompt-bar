@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 'use strict';
 // Status line entry point. Claude Code pipes session JSON on stdin and prints
 // whatever we write to stdout under the prompt. Runs outside the model: 0 tokens.

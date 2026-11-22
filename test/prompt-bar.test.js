@@ -106,7 +106,7 @@ test('end-to-end: hooks print nothing, status line renders, prompt rotates log',
   assert.equal(run(['track.js', 'prompt'], { session_id: sid }), '');
   assert.equal(run(['track.js', 'task_created'], { session_id: sid, task_id: '1', task_subject: 'Build it' }), '');
   assert.equal(run(['track.js', 'task_created'], { session_id: sid, task_id: '2', task_subject: 'Test it' }), '');
-  assert.equal(run(['track.js', 'pre'], { session_id: sid, tool_name: 'Bash', tool_use_id: 't1', tool_input: { command: 'bun test', description: 'Run tests' } }), '');
+  assert.equal(run(['track.js', 'pre'], { session_id: sid, tool_name: 'Bash', tool_use_id: 't1', tool_input: { command: 'npm test', description: 'Run tests' } }), '');
   assert.equal(run(['track.js', 'task_done'], { session_id: sid, task_id: '1' }), '');
   fs.mkdirSync(process.env.PROMPT_BAR_DATA_DIR, { recursive: true });
   fs.writeFileSync(path.join(process.env.PROMPT_BAR_DATA_DIR, 'config.json'), JSON.stringify({ color: false }));

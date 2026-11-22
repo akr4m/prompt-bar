@@ -1,6 +1,6 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 'use strict';
-// Hook handler. Usage: bun track.js <event>
+// Hook handler. Usage: node track.js <event>
 // Appends ONE compact JSON line to the session log and prints NOTHING to stdout,
 // so it adds zero tokens to Claude's context.
 

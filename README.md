@@ -3,7 +3,7 @@
 A live progress indicator for every prompt, drawn in the Claude Code status line.
 
 ```
-⠹ working ▕██████░░░░░░▏ 50% · 2/4 Running tests · $ Bash bun test · 3 tools · 47s
+⠹ working ▕██████░░░░░░▏ 50% · 2/4 Running tests · $ Bash npm test · 3 tools · 47s
 ⠹ working ▕░░░▒▒▒░░░░░░▏ · ✎ Edit render.js · 5 tools · 12s        ← no task list: no fake %
 ⠹ working ▕▒▒▒▒▒░░░░░░░▏ ~40% est · ⌕ Grep TODO · 7 tools · 31s     ← labeled estimate
 ⏸ waiting for you · 1m04s                                           ← permission prompt
@@ -25,11 +25,11 @@ Phases: `thinking` → `working` (tool running, `+N` when calls run in parallel)
 - **0 tokens.** Hooks print nothing, and the status line runs outside the model.
 - Tool hooks are `async`, so Claude never waits on them. Each one appends a single JSON line to `$TMPDIR/prompt-bar/<session>.jsonl`. Append-only writes stay safe when tool calls run in parallel.
 - On each new prompt the log is rewritten to hold only the current prompt plus any unfinished tasks, so reads stay small.
-- The status line reads and folds that log once a second (`refreshInterval: 1`), which takes about 80ms of Bun time. The log is deleted on `SessionEnd`.
+- The status line reads and folds that log once a second (`refreshInterval: 1`), which takes about 50ms of Node time. The log is deleted on `SessionEnd`.
 
 ## Install
 
-Requires [Bun](https://bun.sh) ≥ 1.1 on your `PATH`. Hooks, the status line and the commands all run with `bun`.
+Requires [Node.js](https://nodejs.org) ≥ 18 on your `PATH`. Hooks, the status line and the commands all run with `node`.
 
 ```bash
 /plugin marketplace add akr4m/prompt-bar
@@ -55,6 +55,6 @@ If you already have a status line, it is kept and drawn above the bar. Remove th
 ## Develop
 
 ```bash
-cd prompt-bar && bun test      # no dependencies
-bun run demo                   # preview every style
+cd prompt-bar && npm test      # no dependencies
+npm run demo                   # preview every style
 ```

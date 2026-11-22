@@ -4,9 +4,9 @@
   "private": true,
   "description": "PromptBar: a live, token-free progress bar for Claude Code prompts",
   "license": "MIT",
-  "engines": { "bun": ">=1.1" },
+  "engines": { "node": ">=18" },
   "scripts": {
-    "test": "bun test",
-    "demo": "bun scripts/setup.js demo"
+    "test": "node --test test/",
+    "demo": "node scripts/setup.js demo"
   }
 }

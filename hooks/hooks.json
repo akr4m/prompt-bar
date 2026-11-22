@@ -2,49 +2,49 @@
   "description": "PromptBar: records task lifecycle events to a local log for the status line. Prints nothing, so it adds zero tokens.",
   "hooks": {
     "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" root", "timeout": 5 }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" root", "timeout": 5 }] }
     ],
     "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" prompt", "timeout": 5 }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" prompt", "timeout": 5 }] }
     ],
     "PreToolUse": [
-      { "matcher": "*", "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" pre", "async": true }] }
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" pre", "async": true }] }
     ],
     "PostToolUse": [
-      { "matcher": "*", "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" post", "async": true }] }
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" post", "async": true }] }
     ],
     "PostToolUseFailure": [
-      { "matcher": "*", "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" fail", "async": true }] }
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" fail", "async": true }] }
     ],
     "TaskCreated": [
-      { "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" task_created", "async": true }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" task_created", "async": true }] }
     ],
     "TaskCompleted": [
-      { "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" task_done", "async": true }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" task_done", "async": true }] }
     ],
     "SubagentStart": [
-      { "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" sub_start", "async": true }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" sub_start", "async": true }] }
     ],
     "SubagentStop": [
-      { "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" sub_stop", "async": true }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" sub_stop", "async": true }] }
     ],
     "PermissionRequest": [
-      { "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" wait", "async": true }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" wait", "async": true }] }
     ],
     "PreCompact": [
-      { "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" compact", "async": true }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" compact", "async": true }] }
     ],
     "PostCompact": [
-      { "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" compacted", "async": true }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" compacted", "async": true }] }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" stop", "timeout": 5 }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" stop", "timeout": 5 }] }
     ],
     "StopFailure": [
-      { "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" stop_fail", "timeout": 5 }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" stop_fail", "timeout": 5 }] }
     ],
     "SessionEnd": [
-      { "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" end", "timeout": 5 }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" end", "timeout": 5 }] }
     ]
   }
 }

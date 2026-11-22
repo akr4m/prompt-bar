@@ -1,6 +1,6 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 'use strict';
-// bun setup.js install | uninstall | status | config key=value ... | demo
+// node setup.js install | uninstall | status | config key=value ... | demo
 // Patches ~/.claude/settings.json (with a backup) to show PromptBar in the status line.
 
 const fs = require('fs');
@@ -13,9 +13,10 @@ const SETTINGS = process.env.PROMPT_BAR_SETTINGS || path.join(os.homedir(), '.cl
 const SHIM = path.join(DATA_DIR, 'statusline.js');
 const ROOT = path.resolve(__dirname, '..');
 const fwd = (p) => p.replace(/\\/g, '/');
-const OUR_CMD = 'bun "' + fwd(SHIM) + '"';
+const OUR_CMD = 'node "' + fwd(SHIM) + '"';
+const isOurs = (sl) => !!(sl && typeof sl.command === 'string' && sl.command.includes(fwd(SHIM)));
 
-const SHIM_SRC = `#!/usr/bin/env bun
+const SHIM_SRC = `#!/usr/bin/env node
 // PromptBar stable shim. Loads the current plugin version (path kept fresh by a SessionStart hook).
 const fs = require('fs'), path = require('path');
 let root = ${JSON.stringify(ROOT)};
@@ -40,7 +41,7 @@ function install() {
   fs.writeFileSync(path.join(DATA_DIR, 'root.txt'), ROOT);
 
   const prev = s.statusLine;
-  const already = prev && prev.command === OUR_CMD;
+  const already = isOurs(prev);
   if (prev && !already) {
     // Keep the user's existing status line: we render it first, then our bar.
     saveConfig({ chain: prev.command || '', previousStatusLine: prev });
@@ -58,7 +59,7 @@ function uninstall() {
   const cfg = loadConfig();
   let raw = {};
   try { raw = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch (_) { /* none */ }
-  if (s.statusLine && s.statusLine.command === OUR_CMD) {
+  if (isOurs(s.statusLine)) {
     if (raw.previousStatusLine) s.statusLine = raw.previousStatusLine;
     else delete s.statusLine;
     writeSettings(s);
@@ -72,7 +73,7 @@ function uninstall() {
 
 function status() {
   const s = readSettings();
-  const active = s.statusLine && s.statusLine.command === OUR_CMD;
+  const active = isOurs(s.statusLine);
   console.log('status line: ' + (active ? 'PromptBar (active)' : 'not PromptBar' + (s.statusLine ? ' -> ' + s.statusLine.command : '')));
   console.log('config: ' + JSON.stringify(loadConfig()));
 }
@@ -109,7 +110,7 @@ function demo() {
       { t: t0 + 2, e: 'task', task: { id: '2', status: 'completed', subject: 'Add tests' } },
       { t: t0 + 3, e: 'task', task: { id: '3', status: 'in_progress', subject: 'Run tests', form: 'Running tests' } },
       { t: t0 + 4, e: 'task', task: { id: '4', status: 'pending', subject: 'Update docs' } },
-      { t: t0 + 5, e: 'pre', tool: 'Bash', id: 'a', label: 'bun test' }],
+      { t: t0 + 5, e: 'pre', tool: 'Bash', id: 'a', label: 'npm test' }],
     'no task list': [{ t: t0, e: 'prompt' }, { t: t0 + 1, e: 'pre', tool: 'Edit', id: 'b', label: 'render.js' },
       { t: t0 + 2, e: 'post', tool: 'Edit', id: 'b' }, { t: t0 + 3, e: 'pre', tool: 'Grep', id: 'c', label: 'estimate' }],
     'waiting': [{ t: t0, e: 'prompt' }, { t: t0 + 1, e: 'wait' }],
