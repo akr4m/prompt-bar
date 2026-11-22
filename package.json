@@ -1,0 +1,12 @@
+{
+  "name": "prompt-bar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PromptBar: a live, token-free progress bar for Claude Code prompts",
+  "license": "MIT",
+  "engines": { "bun": ">=1.1" },
+  "scripts": {
+    "test": "bun test",
+    "demo": "bun scripts/setup.js demo"
+  }
+}

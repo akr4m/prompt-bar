@@ -1,0 +1,9 @@
+{
+  "name": "prompt-bar",
+  "displayName": "PromptBar",
+  "version": "0.1.0",
+  "description": "A live progress bar for every prompt, shown in the Claude Code status line. It tracks thinking, tool calls, task lists, subagents and completion, and adds zero tokens.",
+  "author": { "name": "Akram" },
+  "license": "MIT",
+  "keywords": ["statusline", "progress", "hooks", "productivity"]
+}

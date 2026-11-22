@@ -1,0 +1,12 @@
+{
+  "name": "prompt-bar",
+  "owner": { "name": "akr4m" },
+  "description": "A live, token-free progress bar for every prompt in the Claude Code status line.",
+  "plugins": [
+    {
+      "name": "prompt-bar",
+      "source": "./",
+      "description": "A live, token-free progress bar for every prompt in the Claude Code status line."
+    }
+  ]
+}
