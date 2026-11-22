@@ -1,28 +1,44 @@
 'use strict';
 // Pure rendering: (state, progress, config, now) -> one status-line string.
+// The line is built from `cfg.segments` in order. "Head" segments (status, bar, pct,
+// time, source) join with a space so they read as one phrase; the rest use cfg.separator.
 
-const STYLES = {
-  bar:     { l: '▕', r: '▏', full: '█', part: ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉'], empty: '░', est: '▒' },
-  blocks:  { l: '',  r: '',  full: '■', part: [''], empty: '□', est: '▣' },
-  dots:    { l: '',  r: '',  full: '●', part: [''], empty: '○', est: '◍' },
-  ascii:   { l: '[', r: ']', full: '#', part: [''], empty: '-', est: '=' },
+const { activeMs } = require('./state');
+
+const BARS = {
+  bar:    { l: '▕', r: '▏', full: '█', part: ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉'], empty: '░', est: '▒' },
+  blocks: { l: '',  r: '',  full: '■', part: [''], empty: '□', est: '▣' },
+  dots:   { l: '',  r: '',  full: '●', part: [''], empty: '○', est: '◍' },
+  ascii:  { l: '[', r: ']', full: '#', part: [''], empty: '-', est: '=' },
 };
-const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-const SPIN_ASCII = ['|', '/', '-', '\\'];
-
-const C = { reset: '\x1b[0m', dim: '\x1b[2m', green: '\x1b[32m', yellow: '\x1b[33m', cyan: '\x1b[36m', red: '\x1b[31m', magenta: '\x1b[35m' };
-
+const SPINNERS = {
+  braille: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
+  line: ['|', '/', '-', '\\'],
+};
+const GLYPH = {
+  unicode: { waiting: '⏸', done: '✓', error: '✗', agents: '⑂' },
+  ascii: { waiting: '||', done: 'OK', error: 'X', agents: 'agents:' },
+};
 const ICON = {
-  Bash: '$', Read: '⌕', Grep: '⌕', Glob: '⌕', Edit: '✎', Write: '✎', MultiEdit: '✎', NotebookEdit: '✎',
-  WebFetch: '⇣', WebSearch: '⇣', Task: '⑂', Agent: '⑂', TodoWrite: '☑',
+  Bash: '$', PowerShell: '$', Read: '⌕', Grep: '⌕', Glob: '⌕', Edit: '✎', Write: '✎', MultiEdit: '✎',
+  NotebookEdit: '✎', WebFetch: '⇣', WebSearch: '⇣', Task: '⑂', Agent: '⑂', TodoWrite: '☑',
 };
+const ANSI = {
+  black: 30, red: 31, green: 32, yellow: 33, blue: 34, magenta: 35, cyan: 36, white: 37,
+  gray: 90, dim: 2, bold: 1,
+};
+const RESET = '\x1b[0m';
+const HEAD = new Set(['status', 'bar', 'pct', 'time', 'source']);
 
-function fmtDuration(ms) {
+function fmtDuration(ms, format = 'short') {
   const s = Math.max(0, Math.floor(ms / 1000));
-  if (s < 60) return s + 's';
   const m = Math.floor(s / 60);
-  if (m < 60) return m + 'm' + String(s % 60).padStart(2, '0') + 's';
-  return Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0') + 'm';
+  const h = Math.floor(m / 60);
+  const pad = (n) => String(n).padStart(2, '0');
+  if (format === 'clock') return h ? h + ':' + pad(m % 60) + ':' + pad(s % 60) : m + ':' + pad(s % 60);
+  if (s < 60) return s + 's';
+  if (m < 60) return m + 'm' + pad(s % 60) + 's';
+  return h + 'h' + pad(m % 60) + 'm';
 }
 
 function truncate(str, n) {
@@ -30,92 +46,168 @@ function truncate(str, n) {
   return str.length > n ? str.slice(0, Math.max(1, n - 1)) + '…' : str;
 }
 
-function bar(pct, kind, cfg, now) {
-  const st = STYLES[cfg.style] || STYLES.bar;
+function paint(cfg, color, s) {
+  if (!cfg.color || !s || color === 'none') return s;
+  const code = typeof color === 'number' ? '38;5;' + color : ANSI[color];
+  return code === undefined ? s : '\x1b[' + code + 'm' + s + RESET;
+}
+
+// pct: 0-100 fills the bar; null draws an indeterminate pulse. `soft` = hatched fill (estimate).
+function bar(pct, soft, cfg, now) {
+  const st = BARS[cfg.barStyle] || BARS.bar;
   const w = cfg.width;
   if (pct == null) {
-    // Indeterminate: a sliding 3-cell pulse. Honest: shows liveness, claims no amount.
-    // Step once per second to match refreshInterval: 1 (smooth slide, not random jumps).
+    // A sliding 3-cell pulse: shows liveness, claims no amount. One step per redraw second.
     const pos = Math.floor(now / 1000) % (w + 3);
     let out = '';
     for (let i = 0; i < w; i++) out += (i >= pos - 3 && i < pos) ? st.est : st.empty;
     return st.l + out + st.r;
   }
-  const fillChar = kind === 'estimate' ? st.est : st.full;
-  const exact = (pct / 100) * w;
-  let full = Math.floor(exact);
+  const exact = (Math.max(0, Math.min(100, pct)) / 100) * w;
+  const full = Math.floor(exact);
   let partial = '';
-  if (kind !== 'estimate' && st.part.length > 1 && full < w) {
-    partial = st.part[Math.floor((exact - full) * st.part.length)] || '';
-  }
+  if (!soft && st.part.length > 1 && full < w) partial = st.part[Math.floor((exact - full) * st.part.length)] || '';
   const used = full + (partial ? 1 : 0);
-  return st.l + fillChar.repeat(full) + partial + st.empty.repeat(Math.max(0, w - used)) + st.r;
+  return st.l + (soft ? st.est : st.full).repeat(full) + partial + st.empty.repeat(Math.max(0, w - used)) + st.r;
 }
 
-function paint(cfg, color, s) { return cfg.color ? C[color] + s + C.reset : s; }
+// What fills the bar for the chosen measure: { pct, soft } or { pct: null } for a pulse.
+function barFill(prog, cfg) {
+  const t = prog.time;
+  const timeFill = t && !t.over ? { pct: (100 * t.activeMs) / t.totalMs, soft: false } : null;
+  if (cfg.measure === 'time') return timeFill || { pct: null };
+  if (cfg.measure === 'both' && prog.kind !== 'exact' && timeFill) return timeFill;
+  return { pct: prog.pct, soft: prog.kind === 'estimate' };
+}
+
+// Each segment returns a list of parts ([] = nothing to show).
+const SEG = {
+  status(c) {
+    const { state, cfg, ascii, now } = c;
+    const g = GLYPH[ascii ? 'ascii' : 'unicode'];
+    const kind = state.phase === 'done' ? (state.error ? 'error' : 'done') : state.phase;
+    const frames = SPINNERS[cfg.spinner === 'auto' ? (ascii ? 'line' : 'braille') : cfg.spinner];
+    const spin = frames ? frames[Math.floor(now / 1000) % frames.length] : '';
+    const look = {
+      thinking: [spin, cfg.textThinking, cfg.colorThinking],
+      tool: [spin, cfg.textWorking, cfg.colorWorking],
+      compacting: [spin, cfg.textCompacting, cfg.colorCompacting],
+      waiting: [g.waiting, cfg.textWaiting, cfg.colorWaiting],
+      done: [g.done, cfg.textDone, cfg.colorDone],
+      error: [g.error, cfg.textError, cfg.colorError],
+    }[kind] || [spin, cfg.textThinking, cfg.colorThinking];
+    const paused = kind === 'waiting' || kind === 'done' || kind === 'error' || kind === 'compacting';
+    const word = cfg.statusText === 'always' || (cfg.statusText === 'paused' && paused) ? look[1] : '';
+    const s = [look[0], word].filter(Boolean).join(' ');
+    c.bareGlyph = !word;
+    return s ? [paint(cfg, look[2], s)] : [];
+  },
+
+  bar(c) {
+    const { state, prog, cfg, now } = c;
+    if (cfg.barStyle === 'none' || state.phase === 'done') return [];
+    const f = barFill(prog, cfg);
+    // While paused, show a frozen bar only when it holds a real amount, never a pulse.
+    if (state.phase === 'waiting' && f.pct == null) return [];
+    return [paint(cfg, f.pct == null || f.soft ? 'dim' : cfg.colorBar, bar(f.pct, f.soft, cfg, now))];
+  },
+
+  pct(c) {
+    const { state, prog, cfg } = c;
+    if (cfg.measure === 'time' || state.phase === 'done' || prog.pct == null) return [];
+    return [prog.kind === 'estimate' ? '~' + prog.pct + '% ' + paint(cfg, 'dim', cfg.textEst) : prog.pct + '%'];
+  },
+
+  time(c) {
+    const { state, prog, cfg, now } = c;
+    const f = (ms) => fmtDuration(ms, cfg.timeFormat);
+    // A plain duration (no estimate) is a trailing counter: it goes at the end of the line.
+    if (state.phase === 'done') {
+      if (cfg.showElapsed) c.tail = paint(cfg, 'dim', f(state.endedAt - state.startedAt));
+      return [];
+    }
+    const act = activeMs(state, now);
+    const t = cfg.measure === 'percent' ? null : prog.time;
+    if (!t) {
+      if (cfg.showElapsed) c.tail = paint(cfg, 'dim', f(act));
+      return [];
+    }
+    if (t.over) {
+      return cfg.timeStyle === 'remaining'
+        ? [f(act) + ' ' + paint(cfg, 'dim', cfg.textOver)]
+        : [f(act), paint(cfg, 'dim', cfg.textOver + ' ~' + f(t.totalMs))];
+    }
+    // Round remaining up so that elapsed + left never falls short of the total.
+    const left = '~' + f(Math.ceil(t.remainingMs / 1000) * 1000) + ' ' + cfg.textLeft;
+    if (cfg.timeStyle === 'remaining') return [left];
+    const parts = [];
+    if (cfg.showTotal) parts.push(f(act) + paint(cfg, 'dim', ' / ~' + f(t.totalMs)));
+    else if (cfg.showElapsed) parts.push(f(act));
+    if (cfg.showRemaining) parts.push(left);
+    return parts;
+  },
+
+  source(c) {
+    const { state, prog, cfg } = c;
+    const t = prog.time;
+    if (!t || cfg.measure === 'percent' || state.phase === 'done') return [];
+    return [paint(cfg, 'dim', '(' + (t.source === 'tasks' ? cfg.textPace : cfg.textHistory) + ')')];
+  },
+
+  task(c) {
+    const { state, cfg } = c;
+    const t = state.todo;
+    if (!t || !t.total || state.phase === 'done') return [];
+    const label = t.active ? truncate(t.active, cfg.maxLabel) : '';
+    const s = [cfg.showTaskCount ? t.done + '/' + t.total : '', label].filter(Boolean).join(' ');
+    return s ? [s] : [];
+  },
+
+  tool(c) {
+    const { state, cfg, ascii } = c;
+    const lt = state.lastTool;
+    if (!cfg.showLabel || state.phase !== 'tool' || !lt) return [];
+    let a = (cfg.icons && !ascii ? (ICON[lt.tool] || '⚙') + ' ' : '') + lt.tool;
+    if (lt.label) a += ' ' + truncate(lt.label, cfg.maxLabel);
+    if (state.running.size > 1) a += ' +' + (state.running.size - 1);
+    return [a];
+  },
+
+  agents(c) {
+    const { state, ascii } = c;
+    return state.subagents > 0 ? [GLYPH[ascii ? 'ascii' : 'unicode'].agents + state.subagents] : [];
+  },
+
+  tools(c) {
+    const { state, cfg } = c;
+    if (!cfg.showTools || !(state.toolsDone || state.toolsFailed)) return [];
+    let t = state.toolsDone + ' tool' + (state.toolsDone === 1 ? '' : 's');
+    if (state.toolsFailed) t += ' ' + paint(cfg, cfg.colorError, state.toolsFailed + ' failed');
+    return [t];
+  },
+};
 
 function render(state, prog, cfg, now) {
   if (state.phase === 'idle') return '';
-  const parts = [];
-  const ascii = cfg.style === 'ascii';
-  const spin = (ascii ? SPIN_ASCII : SPIN)[Math.floor(now / 1000) % (ascii ? 4 : 10)];
-  const paused = state.phase === 'done' || state.phase === 'waiting';
-  const elapsed = (state.endedAt || now) - state.startedAt;
-
-  // 1) status glyph + phase
-  let head;
-  switch (state.phase) {
-    case 'done': head = state.error
-      ? paint(cfg, 'red', ascii ? 'X stopped (API error)' : '✗ stopped (API error)')
-      : paint(cfg, 'green', ascii ? 'OK done' : '✓ done'); break;
-    case 'waiting': head = paint(cfg, 'yellow', ascii ? '|| waiting for you' : '⏸ waiting for you'); break;
-    case 'compacting': head = paint(cfg, 'magenta', spin + ' compacting'); break;
-    case 'tool': head = paint(cfg, 'cyan', spin + ' working'); break;
-    default: head = paint(cfg, 'cyan', spin + ' thinking');
+  if (state.phase === 'done' && cfg.doneLinger >= 0 && now - state.endedAt > cfg.doneLinger * 1000) return '';
+  const ctx = { state, prog, cfg, now, ascii: cfg.barStyle === 'ascii' };
+  const sep = paint(cfg, 'dim', cfg.separator);
+  const out = [];
+  let prev = '';
+  for (const name of String(cfg.segments).split(',').map((x) => x.trim())) {
+    const fn = SEG[name];
+    const parts = fn ? fn(ctx) : [];
+    if (!parts.length) continue;
+    if (out.length && HEAD.has(name) && HEAD.has(prev)) out[out.length - 1] += ' ' + parts.shift();
+    out.push(...parts);
+    prev = name;
   }
-
-  // 2) bar + percentage (or nothing in minimal style)
-  // A paused task shows a frozen bar only if there's a real number; never an animated pulse.
-  if (cfg.style !== 'minimal' && !paused || (state.phase === 'waiting' && prog.pct != null && cfg.style !== 'minimal')) {
-    let b = bar(prog.pct, prog.kind, cfg, now);
-    let label = '';
-    if (prog.kind === 'exact') label = ' ' + prog.pct + '%';
-    else if (prog.kind === 'estimate') label = ' ~' + prog.pct + '% ' + paint(cfg, 'dim', 'est');
-    b = paint(cfg, prog.kind === 'exact' ? 'green' : 'dim', b) + label;
-    parts.push(head + ' ' + b);
-  } else if (cfg.style === 'minimal' && prog.pct != null && state.phase !== 'done') {
-    parts.push(head + ' ' + (prog.kind === 'estimate' ? '~' + prog.pct + '% est' : prog.pct + '%'));
-  } else {
-    parts.push(head);
+  if (ctx.tail) {
+    // Right after a bare status icon ("✓ 1m12s") a space reads better than a separator.
+    if (out.length === 1 && prev === 'status' && ctx.bareGlyph) out[0] += ' ' + ctx.tail;
+    else out.push(ctx.tail);
   }
-
-  // 3) todo step ("3/7 · Running tests")
-  if (state.todo && state.todo.total && state.phase !== 'done') {
-    let t = state.todo.done + '/' + state.todo.total;
-    if (state.todo.active) t += ' ' + truncate(state.todo.active, cfg.maxLabel);
-    parts.push(t);
-  }
-
-  // 4) current activity
-  if (cfg.showLabel && state.phase === 'tool' && state.lastTool) {
-    const n = state.running.size;
-    const lt = state.lastTool;
-    let a = (ascii ? '' : (ICON[lt.tool] || '⚙') + ' ') + lt.tool;
-    if (lt.label) a += ' ' + truncate(lt.label, cfg.maxLabel);
-    if (n > 1) a += ' +' + (n - 1);
-    parts.push(a);
-  }
-  if (state.subagents > 0) parts.push((ascii ? 'agents:' : '⑂') + state.subagents);
-
-  // 5) counters
-  if (cfg.showTools && (state.toolsDone || state.toolsFailed)) {
-    let t = state.toolsDone + ' tool' + (state.toolsDone === 1 ? '' : 's');
-    if (state.toolsFailed) t += ' ' + paint(cfg, 'red', state.toolsFailed + ' failed');
-    parts.push(t);
-  }
-  if (cfg.showElapsed && state.startedAt) parts.push(paint(cfg, 'dim', fmtDuration(elapsed)));
-
-  return parts.join(paint(cfg, 'dim', cfg.separator));
+  return out.join(sep);
 }
 
-module.exports = { render, bar, fmtDuration, truncate, STYLES };
+module.exports = { render, bar, fmtDuration, truncate, BARS };

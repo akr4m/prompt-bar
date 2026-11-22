@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 'use strict';
-// node setup.js install | uninstall | status | config key=value ... | demo
+// node setup.js install | uninstall | status | config key=value ... | config reset | demo
 // Patches ~/.claude/settings.json (with a backup) to show PromptBar in the status line.
 
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { DATA_DIR, ensureDir } = require('./lib/state');
-const { loadConfig, saveConfig, DEFAULTS, CONFIG_FILE } = require('./lib/config');
+const { loadConfig, saveConfig, resetConfig, validate, normalize, DEFAULTS, LEGACY, LAYOUTS, CONFIG_FILE } = require('./lib/config');
 
 const SETTINGS = process.env.PROMPT_BAR_SETTINGS || path.join(os.homedir(), '.claude', 'settings.json');
 const SHIM = path.join(DATA_DIR, 'statusline.js');
@@ -46,7 +46,7 @@ function install() {
     // Keep the user's existing status line: we render it first, then our bar.
     saveConfig({ chain: prev.command || '', previousStatusLine: prev });
   }
-  s.statusLine = { type: 'command', command: OUR_CMD, padding: 0, refreshInterval: 1 };
+  s.statusLine = { type: 'command', command: OUR_CMD, padding: 0, refreshInterval: loadConfig().refresh };
   writeSettings(s);
   console.log('PromptBar installed.');
   console.log('  settings: ' + SETTINGS + (fs.existsSync(SETTINGS + '.prompt-bar.bak') ? ' (backup: .prompt-bar.bak)' : ''));
@@ -85,17 +85,49 @@ function coerce(v) {
   return v;
 }
 
+// Keep settings.json's redraw interval in step with the "refresh" key.
+function applyRefresh(sec) {
+  const s = readSettings();
+  if (!isOurs(s.statusLine) || s.statusLine.refreshInterval === sec) return;
+  s.statusLine.refreshInterval = sec;
+  writeSettings(s);
+  console.log('refresh: status line now redraws every ' + sec + 's (settings.json updated)');
+}
+
 function config(args) {
+  if (args[0] === 'reset') {
+    resetConfig();
+    applyRefresh(DEFAULTS.refresh);
+    console.log('PromptBar settings reset to defaults.');
+    console.log(JSON.stringify(loadConfig()));
+    return;
+  }
   const patch = {};
+  let errors = 0;
   for (const a of args) {
     const i = a.indexOf('=');
-    if (i < 1) continue;
-    const k = a.slice(0, i);
-    if (!(k in DEFAULTS)) { console.log('unknown key: ' + k + ' (valid: ' + Object.keys(DEFAULTS).join(', ') + ')'); continue; }
-    patch[k] = coerce(a.slice(i + 1));
+    if (i < 1) { console.log('ignored "' + a + '": use key=value'); errors++; continue; }
+    const raw = { [a.slice(0, i)]: a.slice(i + 1) };
+    const key = Object.keys(raw)[0];
+    // Text keys keep the literal string ("textDone=100" stays "100").
+    const isText = ['text', 'separator', 'segments'].some((p) => key.startsWith(p)) || key === 'chain';
+    raw[key] = isText ? raw[key] : coerce(raw[key]);
+    const norm = normalize(raw);
+    const [k, v] = Object.entries(norm)[0] || [key, raw[key]];
+    if (LEGACY[key] && k !== key) console.log('note: "' + key + '" is now "' + k + '"');
+    if (key === 'chain' || key === 'previousStatusLine') { console.log('"' + key + '" is managed by setup'); errors++; continue; }
+    const err = validate(k, v);
+    if (err) { console.log('invalid ' + k + '=' + JSON.stringify(v) + ': ' + err); errors++; continue; }
+    patch[k] = v;
   }
-  if (Object.keys(patch).length) saveConfig(patch);
-  console.log(JSON.stringify(loadConfig()));
+  if (Object.keys(patch).length) {
+    saveConfig(patch);
+    if ('refresh' in patch) applyRefresh(patch.refresh);
+  }
+  if (errors && !Object.keys(patch).length) process.exitCode = 1;
+  const cfg = loadConfig();
+  delete cfg.chain;
+  console.log(JSON.stringify(cfg));
 }
 
 function demo() {
@@ -104,6 +136,8 @@ function demo() {
   const { render } = require('./lib/render');
   const now = Date.now();
   const t0 = now - 47000;
+  // Typical prompt in this demo project: 1m40s of working time.
+  const stats = { v: 2, all: [100000, 100000, 100000], projects: {} };
   const scenes = {
     'task list': [{ t: t0, e: 'prompt' },
       { t: t0 + 1, e: 'task', task: { id: '1', status: 'completed', subject: 'Write parser' } },
@@ -111,25 +145,31 @@ function demo() {
       { t: t0 + 3, e: 'task', task: { id: '3', status: 'in_progress', subject: 'Run tests', form: 'Running tests' } },
       { t: t0 + 4, e: 'task', task: { id: '4', status: 'pending', subject: 'Update docs' } },
       { t: t0 + 5, e: 'pre', tool: 'Bash', id: 'a', label: 'npm test' }],
-    'no task list': [{ t: t0, e: 'prompt' }, { t: t0 + 1, e: 'pre', tool: 'Edit', id: 'b', label: 'render.js' },
+    'history': [{ t: t0, e: 'prompt' }, { t: t0 + 1, e: 'pre', tool: 'Edit', id: 'b', label: 'render.js' },
       { t: t0 + 2, e: 'post', tool: 'Edit', id: 'b' }, { t: t0 + 3, e: 'pre', tool: 'Grep', id: 'c', label: 'estimate' }],
+    'over est': [{ t: now - 130000, e: 'prompt' }, { t: now - 1000, e: 'pre', tool: 'Bash', id: 'd', label: 'npm run build' }],
     'waiting': [{ t: t0, e: 'prompt' }, { t: t0 + 1, e: 'wait' }],
-    'done': [{ t: t0, e: 'prompt' }, { t: t0 + 1, e: 'post', tool: 'Read', id: 'x' }, { t: now, e: 'stop' }],
+    'done': [{ t: now - 72000, e: 'prompt' }, { t: now - 50000, e: 'post', tool: 'Read', id: 'x' }, { t: now, e: 'stop' }],
   };
   const base = loadConfig();
-  for (const style of ['bar', 'blocks', 'dots', 'ascii', 'minimal']) {
-    console.log('-- style=' + style);
+  const show = (label, over) => {
+    console.log('-- ' + label);
+    const cfg = Object.assign({}, base, over, { color: false, doneLinger: -1 });
     for (const [name, evs] of Object.entries(scenes)) {
       const st = reduce(evs);
-      console.log('  ' + name.padEnd(13) + render(st, estimateProgress(st, null, now), Object.assign({}, base, { style, color: false }), now));
+      console.log('  ' + name.padEnd(10) + render(st, estimateProgress(st, stats, now, cfg), cfg, now));
     }
+  };
+  for (const layout of Object.keys(LAYOUTS)) {
+    show('layout=' + layout, Object.assign({}, DEFAULTS, LAYOUTS[layout], { layout }));
   }
+  show('measure=percent (your other settings)', { measure: 'percent' });
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
 try {
   ({ install, uninstall, status, config: () => config(rest), demo }[cmd] || (() => {
-    console.log('usage: setup.js install | uninstall | status | config key=value ... | demo');
+    console.log('usage: setup.js install | uninstall | status | config key=value ... | config reset | demo');
   }))();
 } catch (e) {
   console.error('prompt-bar setup failed: ' + e.message);

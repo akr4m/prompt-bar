@@ -18,7 +18,7 @@ function main(raw) {
   let line = '';
   try {
     const state = reduce(readEvents(input.session_id));
-    const prog = estimateProgress(state, cfg.showEstimate ? loadStats() : null, now);
+    const prog = estimateProgress(state, cfg.estimate === 'off' ? null : loadStats(), now, cfg);
     line = render(state, prog, cfg, now);
   } catch (e) {
     line = process.env.PROMPT_BAR_DEBUG ? 'prompt-bar error: ' + e.message : '';

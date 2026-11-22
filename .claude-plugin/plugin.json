@@ -1,9 +1,18 @@
 {
   "name": "prompt-bar",
   "displayName": "PromptBar",
-  "version": "0.1.0",
-  "description": "A live progress bar for every prompt, shown in the Claude Code status line. It tracks thinking, tool calls, task lists, subagents and completion, and adds zero tokens.",
-  "author": { "name": "Akram" },
+  "version": "0.2.0",
+  "description": "Live time estimates for every Claude Code prompt, shown in the status line: elapsed time, estimated total and time remaining, worked out from Claude's task list or your own per-project history. Seven layouts, fully configurable, and it adds zero tokens.",
+  "author": {
+    "name": "akr4m"
+  },
   "license": "MIT",
-  "keywords": ["statusline", "progress", "hooks", "productivity"]
+  "keywords": [
+    "statusline",
+    "eta",
+    "time-estimate",
+    "progress",
+    "hooks",
+    "productivity"
+  ]
 }

@@ -1,0 +1,17 @@
+# dependencies and tooling
+node_modules/
+npm-debug.log*
+*.log
+
+# local Claude Code / plugin state
+.remember/
+.claude/settings.local.json
+
+# temp files written by the hooks
+*.tmp
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

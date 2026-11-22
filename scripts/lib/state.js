@@ -48,19 +48,30 @@ function reduce(events) {
     tasks: new Map(),   // task_id -> { id, status, subject, form } - Task tools / TaskCreated hooks
     subagents: 0,
     error: false,
+    cwd: '',            // project folder of the prompt (per-project history)
+    waitMs: 0,          // time spent waiting for the user (excluded from estimates)
+    waitingSince: 0,    // start of the current wait, 0 when not waiting
   };
   const finished = new Set(); // async hooks may log a post before its pre
   let anon = 0;
   // Async hooks can land out of order; timestamps are taken at hook start.
   const sorted = events.slice().sort((a, b) => (a.t || 0) - (b.t || 0));
+  const WAIT_TOOLS = new Set(['AskUserQuestion']);
   for (const ev of sorted) {
     s.lastEventAt = ev.t || s.lastEventAt;
+    // Any activity other than a new wait ends the current wait.
+    const startsWait = ev.e === 'wait' || (ev.e === 'pre' && WAIT_TOOLS.has(ev.tool));
+    if (s.waitingSince && !startsWait && ev.e !== 'prompt') {
+      s.waitMs += Math.max(0, ev.t - s.waitingSince);
+      s.waitingSince = 0;
+    }
     switch (ev.e) {
       case 'prompt':
         s.phase = 'thinking';
         s.startedAt = ev.t; s.endedAt = 0; s.error = false;
         s.toolsDone = 0; s.toolsFailed = 0;
         s.running.clear(); s.lastTool = null; s.todo = null; s.subagents = 0;
+        s.cwd = ev.cwd || ''; s.waitMs = 0; s.waitingSince = 0;
         finished.clear();
         break;
       case 'pre': {
@@ -68,7 +79,8 @@ function reduce(events) {
         const id = ev.id || 'anon' + (anon++);
         s.running.set(id, { tool: ev.tool, label: ev.label, t: ev.t });
         s.lastTool = { tool: ev.tool, label: ev.label };
-        if (s.phase !== 'done') s.phase = 'tool';
+        if (s.phase !== 'done') s.phase = WAIT_TOOLS.has(ev.tool) ? 'waiting' : 'tool';
+        if (WAIT_TOOLS.has(ev.tool) && !s.waitingSince && s.phase === 'waiting') s.waitingSince = ev.t;
         break;
       }
       case 'post':
@@ -87,7 +99,12 @@ function reduce(events) {
       case 'task': applyTask(s, ev.task); break;
       case 'sub_start': s.subagents++; break;
       case 'sub_stop': s.subagents = Math.max(0, s.subagents - 1); break;
-      case 'wait': if (s.phase !== 'done' && s.phase !== 'idle') s.phase = 'waiting'; break;
+      case 'wait':
+        if (s.phase !== 'done' && s.phase !== 'idle') {
+          s.phase = 'waiting';
+          if (!s.waitingSince) s.waitingSince = ev.t;
+        }
+        break;
       case 'compact': if (s.phase !== 'idle') s.phase = 'compacting'; break;
       case 'compacted': if (s.phase === 'compacting') s.phase = 'thinking'; break;
       case 'stop':
@@ -110,6 +127,14 @@ function reduce(events) {
   return s;
 }
 
+// Claude's working time so far: wall clock minus time spent waiting for the user.
+function activeMs(s, now) {
+  if (s.phase === 'idle') return 0;
+  const end = s.endedAt || now;
+  const openWait = s.waitingSince ? Math.max(0, end - s.waitingSince) : 0;
+  return Math.max(0, end - s.startedAt - s.waitMs - openWait);
+}
+
 function applyTask(s, t) {
   if (!t || !t.id) return;
   const cur = s.tasks.get(t.id) || { id: t.id, status: 'pending', subject: '', form: '' };
@@ -119,4 +144,4 @@ function applyTask(s, t) {
   s.tasks.set(t.id, cur);
 }
 
-module.exports = { STATE_DIR, DATA_DIR, logPath, ensureDir, readEvents, reduce, safeId };
+module.exports = { STATE_DIR, DATA_DIR, logPath, ensureDir, readEvents, reduce, activeMs, safeId };

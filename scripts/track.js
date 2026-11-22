@@ -6,7 +6,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { STATE_DIR, logPath, ensureDir, readEvents, reduce } = require('./lib/state');
+const { STATE_DIR, logPath, ensureDir, readEvents, reduce, activeMs } = require('./lib/state');
 
 const kind = process.argv[2] || '';
 
@@ -42,7 +42,7 @@ function toEvent(k, p) {
   const t = Date.now();
   const tool = p.tool_name;
   switch (k) {
-    case 'prompt': return { t, e: 'prompt' };
+    case 'prompt': return p.cwd ? { t, e: 'prompt', cwd: String(p.cwd) } : { t, e: 'prompt' };
     case 'pre': return { t, e: 'pre', tool, id: p.tool_use_id, label: String(label(tool, p.tool_input)).slice(0, 60) };
     case 'post': {
       const ev = { t, e: 'post', tool, id: p.tool_use_id };
@@ -86,10 +86,13 @@ function rotate(sessionId, ev) {
 }
 
 function finish(sessionId) {
-  // Feed history used by the "~est" heuristic.
+  // Feed the history behind time estimates: working time only, per project.
   try {
     const s = reduce(readEvents(sessionId));
-    if (s.startedAt && s.endedAt) require('./lib/estimate').recordRun(s.toolsDone, s.endedAt - s.startedAt);
+    if (s.startedAt && s.endedAt) {
+      const cfg = require('./lib/config').loadConfig();
+      require('./lib/estimate').recordRun(s.cwd, activeMs(s, s.endedAt), cfg);
+    }
   } catch (_) { /* best effort */ }
 }
 

@@ -1,5 +1,5 @@
 ---
-description: Install the PromptBar progress bar into your Claude Code status line
+description: Show PromptBar time estimates in your Claude Code status line
 allowed-tools: Bash(node:*)
 disable-model-invocation: true
 ---

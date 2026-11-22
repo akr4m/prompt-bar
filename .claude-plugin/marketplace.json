@@ -1,12 +1,15 @@
 {
   "name": "prompt-bar",
-  "owner": { "name": "akr4m" },
-  "description": "A live, token-free progress bar for every prompt in the Claude Code status line.",
+  "owner": {
+    "name": "akr4m"
+  },
+  "description": "Live time estimates for every Claude Code prompt in the status line: elapsed, estimated total and time remaining. Zero tokens.",
   "plugins": [
     {
       "name": "prompt-bar",
       "source": "./",
-      "description": "A live, token-free progress bar for every prompt in the Claude Code status line."
+      "description": "Live time estimates for every Claude Code prompt in the status line: elapsed, estimated total and time remaining. Zero tokens.",
+      "version": "0.2.0"
     }
   ]
 }
