@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PromptBar share image</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c11;
+    --panel: #11141b;
+    --panel-2: #0d1016;
+    --line: #232834;
+    --text: #e8ebf1;
+    --muted: #8b93a7;
+    --dim: #5d6477;
+    --cyan: #5cc8e6;
+    --green: #4ade80;
+    --amber: #f5b84b;
+    --accent: #d97757;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1600px; height: 900px; background: var(--bg); overflow: hidden; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--text);
+    position: relative;
+  }
+  /* soft light and a faint grid, for depth without noise */
+  .glow {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(900px 520px at 78% 108%, rgba(74, 222, 128, 0.13), transparent 70%),
+      radial-gradient(800px 480px at 8% -10%, rgba(92, 200, 230, 0.12), transparent 70%);
+  }
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at 50% 40%, #000 30%, transparent 80%);
+  }
+  .wrap {
+    position: relative; height: 100%;
+    padding: 76px 120px 64px;
+    display: flex; flex-direction: column;
+  }
+
+  /* header */
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .mark {
+    width: 44px; height: 44px; border-radius: 11px;
+    background: linear-gradient(145deg, #1a2030, #121620);
+    border: 1px solid #2c3343;
+    display: grid; place-items: center;
+  }
+  .mark i { display: block; width: 24px; height: 8px; border-radius: 3px;
+    background: linear-gradient(90deg, var(--green) 0 62%, #2a3140 62% 100%); }
+  .name { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+  .tag {
+    margin-left: 10px; font: 500 15px 'JetBrains Mono', monospace; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px;
+  }
+
+  h1 {
+    margin-top: 44px;
+    font-size: 76px; line-height: 1.04; font-weight: 800; letter-spacing: -0.035em;
+  }
+  h1 .soft { color: var(--green); }
+  .sub {
+    margin-top: 20px; font-size: 28px; line-height: 1.4; color: var(--muted); font-weight: 400;
+  }
+
+  /* terminal */
+  .term {
+    margin-top: 48px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: 1px solid #262c39;
+    box-shadow: 0 40px 90px -30px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.02) inset;
+    overflow: hidden;
+  }
+  .bar-top {
+    height: 46px; display: flex; align-items: center; gap: 9px; padding: 0 20px;
+    border-bottom: 1px solid #1c212c; background: rgba(255,255,255,0.015);
+  }
+  .dot { width: 13px; height: 13px; border-radius: 50%; }
+  .r { background: #ff5f57; } .y { background: #febc2e; } .g { background: #28c840; }
+  .title { margin-left: 14px; font: 500 15px 'JetBrains Mono', monospace; color: var(--dim); }
+  .body {
+    padding: 30px 34px 32px;
+    font: 400 24px/1.7 'JetBrains Mono', ui-monospace, monospace;
+    color: var(--muted);
+  }
+  .prompt { color: var(--text); }
+  .prompt b { color: var(--accent); font-weight: 700; margin-right: 12px; }
+  .step { color: var(--dim); display: flex; gap: 34px; }
+  .step > span { white-space: nowrap; }
+  .step .ok { color: var(--green); }
+  .step .tool { color: var(--muted); }
+  .rule { height: 1px; background: #1f2430; margin: 16px 0 18px; }
+
+  /* the PromptBar line, in the plugin's own colours */
+  .status { color: var(--text); white-space: nowrap; display: flex; align-items: center; }
+  .spin { color: var(--cyan); }
+  .phase { color: var(--cyan); margin: 0 14px 0 10px; }
+  .meter {
+    display: inline-flex; gap: 3px; padding: 5px 6px;
+    border: 1px solid #2a3140; border-radius: 6px; margin-right: 14px;
+  }
+  .meter span { width: 14px; height: 18px; border-radius: 2px; background: #222836; }
+  .meter span.on { background: var(--green); box-shadow: 0 0 10px rgba(74,222,128,0.35); }
+  .t { color: var(--text); }
+  .d { color: var(--dim); }
+  .left { color: var(--amber); font-weight: 500; }
+  .sep { color: var(--dim); margin: 0 12px; }
+
+  /* footer */
+  .foot {
+    margin-top: auto;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .chips { display: flex; gap: 14px; }
+  .chip {
+    font-size: 19px; font-weight: 500; color: #c9cfdb;
+    padding: 11px 18px; border-radius: 10px;
+    background: rgba(255,255,255,0.035); border: 1px solid #242a36;
+  }
+  .chip em { font-style: normal; color: var(--green); margin-right: 8px; }
+  .cta {
+    display: flex; align-items: center; gap: 12px;
+    font: 500 21px 'JetBrains Mono', monospace; color: var(--text);
+    padding: 13px 22px; border-radius: 12px;
+    background: #161b25; border: 1px solid #2f3646;
+  }
+  .cta svg { width: 24px; height: 24px; fill: var(--text); }
+</style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="grid"></div>
+  <main class="wrap">
+    <div class="brand">
+      <div class="mark"><i></i></div>
+      <div class="name">PromptBar</div>
+      <div class="tag">for Claude Code</div>
+    </div>
+
+    <h1>Know how long Claude Code<br>will <span class="soft">take.</span></h1>
+    <p class="sub">Live time estimates in your status line. Free &amp; open source.</p>
+
+    <section class="term" aria-label="Claude Code terminal with PromptBar">
+      <div class="bar-top">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="title">claude — ~/projects/shop</span>
+      </div>
+      <div class="body">
+        <div class="prompt"><b>&gt;</b>refactor the auth module and add tests</div>
+        <div class="step"><span><span class="ok">✓</span> <span class="tool">Read</span> src/auth.ts</span><span><span class="ok">✓</span> <span class="tool">Edit</span> src/session.ts</span><span><span class="ok">✓</span> <span class="tool">Write</span> auth.test.ts</span></div>
+        <div class="rule"></div>
+        <div class="status">
+          <span class="spin">⠹</span><span class="phase">working</span>
+          <span class="meter"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span><span></span><span></span><span></span></span>
+          <span class="t">47s</span><span class="d">&nbsp;/ ~1m10s</span><span class="sep">·</span><span class="left">~24s left</span><span class="sep">·</span><span>2/4 Running tests</span><span class="sep">·</span><span class="d">$ npm test</span>
+        </div>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <div class="chips">
+        <div class="chip"><em>●</em>Learns your pace</div>
+        <div class="chip"><em>●</em>AI-assisted or 0 tokens</div>
+        <div class="chip"><em>●</em>7 layouts</div>
+      </div>
+      <div class="cta">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        github.com/akr4m/prompt-bar
+      </div>
+    </footer>
+  </main>
+</body>
+</html>
