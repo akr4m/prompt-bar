@@ -14,7 +14,7 @@ delete process.env.PROMPT_BAR_STYLE;
 
 const { reduce, activeMs } = require('../scripts/lib/state');
 const { estimateProgress, median, typicalMs, recordRun, loadStats, STATS_FILE } = require('../scripts/lib/estimate');
-const { render, bar, fmtDuration } = require('../scripts/lib/render');
+const { render, bar, fmtDuration, BARS } = require('../scripts/lib/render');
 const { DEFAULTS, LAYOUTS, loadConfig, validate, CONFIG_FILE } = require('../scripts/lib/config');
 
 const cfg = Object.assign({}, DEFAULTS, { color: false });
@@ -268,6 +268,19 @@ test('bar widths are stable for every style', () => {
     const lens = [0, 13, 50, 99, 100].map((p) => [...bar(p, false, c, 0)].length);
     lens.push([...bar(null, false, c, 0)].length, [...bar(40, true, c, 0)].length);
     assert.equal(new Set(lens).size, 1, barStyle + ' ' + lens);
+  }
+});
+
+test('the no-estimate pulse is always fully visible, at every second and width', () => {
+  for (const barStyle of ['bar', 'blocks', 'dots', 'ascii']) {
+    for (const width of [4, 5, 12, 40]) {
+      const c = Object.assign({}, cfg, { barStyle, width });
+      const est = BARS[barStyle].est;
+      for (let sec = 0; sec < 2 * width + 4; sec++) {
+        const cells = [...bar(null, false, c, sec * 1000)].filter((ch) => ch === est).length;
+        assert.equal(cells, 3, barStyle + ' width ' + width + ' second ' + sec);
+      }
+    }
   }
 });
 
@@ -526,6 +539,13 @@ test('AI estimate: used when there is no task pace, ranked above history', () =>
   assert.equal(p.time.totalMs, 120 * S);
   assert.match(render(s, p, Object.assign({}, cfg, { segments: 'time,source' }), 30 * S), /30s \/ ~2m00s · ~1m30s left \(ai\)/);
   assert.equal(estimateProgress(s, null, 30 * S, FREE).time, null, 'estimator=free ignores the AI answer');
+});
+
+test('measure=percent uses the AI estimate too, labelled as an estimate', () => {
+  const c = Object.assign({}, AI, { measure: 'percent', color: false });
+  const p = estimateProgress(withAi(), null, 30 * S, c);
+  assert.deepEqual([p.pct, p.kind], [25, 'estimate']);
+  assert.match(render(withAi(), p, c, 30 * S), /▕▒▒▒░+▏ ~25% est/);
 });
 
 test('AI estimate: task pace takes over once a task finishes in this prompt', () => {

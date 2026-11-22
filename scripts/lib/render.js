@@ -64,10 +64,13 @@ function bar(pct, soft, cfg, now) {
   const st = BARS[cfg.barStyle] || BARS.bar;
   const w = cfg.width;
   if (pct == null) {
-    // A sliding 3-cell pulse: shows liveness, claims no amount. One step per redraw second.
-    const pos = Math.floor(now / 1000) % (w + 3);
+    // A 3-cell pulse bouncing end to end: shows liveness, claims no amount. One step per
+    // redraw second, and always fully on the bar, so it never looks like an empty 0% bar.
+    const span = w - 3;
+    const k = span > 0 ? Math.floor(now / 1000) % (2 * span) : 0;
+    const start = k <= span ? k : 2 * span - k;
     let out = '';
-    for (let i = 0; i < w; i++) out += (i >= pos - 3 && i < pos) ? st.est : st.empty;
+    for (let i = 0; i < w; i++) out += (i >= start && i < start + 3) ? st.est : st.empty;
     return st.l + out + st.r;
   }
   const exact = (Math.max(0, Math.min(100, pct)) / 100) * w;

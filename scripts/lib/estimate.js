@@ -178,7 +178,7 @@ function estimateProgress(state, stats, now, cfg = DEFAULTS) {
   else if (state.phase === 'interrupted') { /* no amount: it did not finish */ }
   else if (state.todo && state.todo.total > 0) {
     pct = Math.round((100 * state.todo.done) / state.todo.total); kind = 'exact';
-  } else if (time && time.source === 'history') {
+  } else if (time && (time.source === 'history' || time.source === 'ai')) {
     pct = Math.max(0, Math.min(EST_CAP, Math.round((100 * active) / time.totalMs))); kind = 'estimate';
   }
   return { pct, kind, time };

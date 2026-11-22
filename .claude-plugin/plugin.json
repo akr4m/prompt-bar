@@ -1,7 +1,7 @@
 {
   "name": "prompt-bar",
   "displayName": "PromptBar",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Live time estimates for every Claude Code prompt, shown in the status line: elapsed time, estimated total and time remaining. By default a quick AI estimate reads each prompt, using your existing Claude Code login (about 800 tokens a prompt, no API key), then Claude's task pace and your own per-project history take over. Switch to the token-free estimator any time. Seven layouts, fully configurable.",
   "author": {
     "name": "akr4m"
