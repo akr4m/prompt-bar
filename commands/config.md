@@ -1,6 +1,6 @@
 ---
-description: "Configure PromptBar (e.g. layout=compact measure=both barStyle=dots, or reset). With no arguments, previews every layout"
-argument-hint: "[layout=default|verbose|compact|minimal|countdown|focus|plain] [measure=time|percent|both] [key=value ...] | reset"
+description: "Configure PromptBar (e.g. estimator=free layout=compact measure=both, or reset). With no arguments, previews every layout"
+argument-hint: "[estimator=ai|free] [layout=default|verbose|compact|minimal|countdown|focus|plain] [measure=time|percent|both] [key=value ...] | reset"
 allowed-tools: Bash(node:*)
 disable-model-invocation: true
 ---

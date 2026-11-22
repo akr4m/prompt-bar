@@ -1,5 +1,5 @@
 {
-  "description": "PromptBar: records prompt, tool, task and wait events to a local log that the status line turns into time estimates. Prints nothing, so it adds zero tokens.",
+  "description": "PromptBar: records prompt, tool, task and wait events to a local log that the status line turns into time estimates. The hooks print nothing, so they add nothing to the conversation.",
   "hooks": {
     "SessionStart": [
       { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/track.js\" root", "timeout": 5 }] }

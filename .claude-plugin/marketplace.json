@@ -3,13 +3,13 @@
   "owner": {
     "name": "akr4m"
   },
-  "description": "Live time estimates for every Claude Code prompt in the status line: elapsed, estimated total and time remaining. Zero tokens.",
+  "description": "Live time estimates for every Claude Code prompt in the status line: elapsed, estimated total and time remaining. AI-assisted on your own Claude Code plan, or fully token-free.",
   "plugins": [
     {
       "name": "prompt-bar",
       "source": "./",
-      "description": "Live time estimates for every Claude Code prompt in the status line: elapsed, estimated total and time remaining. Zero tokens.",
-      "version": "0.2.0"
+      "description": "Live time estimates for every Claude Code prompt in the status line: elapsed, estimated total and time remaining. AI-assisted on your own Claude Code plan, or fully token-free.",
+      "version": "0.3.0"
     }
   ]
 }

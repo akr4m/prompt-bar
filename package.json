@@ -1,8 +1,8 @@
 {
   "name": "prompt-bar",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "PromptBar: live, token-free time estimates for Claude Code prompts",
+  "description": "PromptBar: live time estimates for Claude Code prompts, AI-assisted or token-free",
   "license": "MIT",
   "engines": {
     "node": ">=18"

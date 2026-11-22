@@ -21,17 +21,21 @@ const LAYOUTS = {
 };
 
 const DEFAULTS = {
+  // estimator
+  estimator: 'ai',       // ai (asks Claude via your Claude Code login, ~800 tokens a call) | free (0 tokens)
+  aiModel: 'haiku',      // model alias or id for the AI estimate
+  aiMaxCalls: 3,         // AI calls per prompt at most (start, then re-asks)
   // what to show
   layout: 'default',     // default | verbose | compact | minimal | countdown | focus | plain
   measure: 'time',       // time | percent | both
-  estimate: 'auto',      // auto (task pace, then history) | tasks | history | off
+  estimate: 'auto',      // auto (task pace, then AI, then history) | tasks | history | off
   timeStyle: 'full',     // full ("47s / ~1m40s · ~53s left") | remaining ("~53s left")
   showTotal: true,       // the "/ ~1m40s" part
   showRemaining: true,   // the "~53s left" part
   statusText: 'always',  // phase word next to the icon: always | paused (done/waiting only) | never
   segments: 'status,bar,pct,time,task,tool,agents,tools',
   // history
-  historySize: 20,       // finished prompts kept per project
+  historySize: 50,       // finished prompts kept per project
   minSamples: 3,         // prompts needed before history is used
   historyScope: 'project', // project | global
   timeFormat: 'short',   // short (1m40s) | clock (1:40)
@@ -45,6 +49,7 @@ const DEFAULTS = {
   colorCompacting: 'magenta',
   colorDone: 'green',
   colorError: 'red',
+  colorInterrupted: 'yellow',
   colorBar: 'green',
   icons: true,           // tool icons ($ ✎ ⌕ ...)
   spinner: 'auto',       // auto | braille | line | none
@@ -57,10 +62,11 @@ const DEFAULTS = {
   textDone: 'done',
   textError: 'stopped (API error)',
   textLeft: 'left',
-  textOver: 'over est',
+  textInterrupted: 'interrupted',
   textEst: 'est',
   textPace: 'task pace',
   textHistory: 'history',
+  textAi: 'ai',
   // behaviour
   showLabel: true,       // current tool + target (e.g. "Edit state.js")
   showTools: true,       // tool-call counter
@@ -79,6 +85,9 @@ const TEXT = { kind: 'text' };
 const COLOR = { kind: 'color' };
 
 const SCHEMA = {
+  estimator: enumOf('ai', 'free'),
+  aiModel: { kind: 'model' },
+  aiMaxCalls: int(1, 10),
   layout: enumOf(...Object.keys(LAYOUTS)),
   measure: enumOf('time', 'percent', 'both'),
   estimate: enumOf('auto', 'tasks', 'history', 'off'),
@@ -93,12 +102,12 @@ const SCHEMA = {
   width: int(4, 40),
   color: BOOL,
   colorThinking: COLOR, colorWorking: COLOR, colorWaiting: COLOR, colorCompacting: COLOR,
-  colorDone: COLOR, colorError: COLOR, colorBar: COLOR,
+  colorDone: COLOR, colorError: COLOR, colorInterrupted: COLOR, colorBar: COLOR,
   icons: BOOL,
   spinner: enumOf('auto', 'braille', 'line', 'none'),
   separator: TEXT,
   textThinking: TEXT, textWorking: TEXT, textWaiting: TEXT, textCompacting: TEXT, textDone: TEXT,
-  textError: TEXT, textLeft: TEXT, textOver: TEXT, textEst: TEXT, textPace: TEXT, textHistory: TEXT,
+  textError: TEXT, textInterrupted: TEXT, textLeft: TEXT, textEst: TEXT, textPace: TEXT, textHistory: TEXT, textAi: TEXT,
   showLabel: BOOL, showTools: BOOL, showElapsed: BOOL, showTaskCount: BOOL,
   maxLabel: int(4, 200),
   doneLinger: int(-1, 86400),
@@ -136,6 +145,9 @@ function validate(key, value) {
     case 'text': return typeof value === 'string' ? null : 'must be text';
     case 'color': return (COLOR_NAMES.includes(value) || (Number.isInteger(value) && value >= 0 && value <= 255))
       ? null : 'must be a colour name (' + COLOR_NAMES.join(' ') + ') or 0-255';
+    // Passed to `claude --model`: a model alias or id, nothing that could act as another flag.
+    case 'model': return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._[\]-]{0,63}$/.test(value)
+      ? null : 'must be a model alias or id, e.g. haiku, sonnet, claude-haiku-5-5';
     case 'segments': {
       if (typeof value !== 'string' || !value.trim()) return 'must be a comma list of ' + SEGMENTS.join(',');
       const bad = value.split(',').map((x) => x.trim()).filter((x) => !SEGMENTS.includes(x));

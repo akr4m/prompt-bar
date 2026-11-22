@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { STATE_DIR, logPath, ensureDir, readEvents, reduce, activeMs } = require('./lib/state');
+const { lastInterruptAt } = require('./lib/transcript');
 
 const kind = process.argv[2] || '';
 
@@ -42,7 +43,12 @@ function toEvent(k, p) {
   const t = Date.now();
   const tool = p.tool_name;
   switch (k) {
-    case 'prompt': return p.cwd ? { t, e: 'prompt', cwd: String(p.cwd) } : { t, e: 'prompt' };
+    case 'prompt': {
+      const ev = { t, e: 'prompt' };
+      if (p.cwd) ev.cwd = String(p.cwd);
+      if (p.prompt) ev.text = String(p.prompt).slice(0, 2000); // kept locally for the AI estimator
+      return ev;
+    }
     case 'pre': return { t, e: 'pre', tool, id: p.tool_use_id, label: String(label(tool, p.tool_input)).slice(0, 60) };
     case 'post': {
       const ev = { t, e: 'post', tool, id: p.tool_use_id };
@@ -54,7 +60,8 @@ function toEvent(k, p) {
       }
       return ev;
     }
-    case 'fail': return { t, e: 'fail', tool, id: p.tool_use_id };
+    // Esc while a tool runs arrives as a failure flagged is_interrupt: the prompt ended.
+    case 'fail': return p.is_interrupt ? { t, e: 'interrupt', tool, id: p.tool_use_id } : { t, e: 'fail', tool, id: p.tool_use_id };
     case 'task_created': return { t, e: 'task', task: { id: String(p.task_id || ''), status: 'pending', subject: String(p.task_subject || '').slice(0, 60) } };
     case 'task_done': return { t, e: 'task', task: { id: String(p.task_id || ''), status: 'completed' } };
     case 'sub_start': return { t, e: 'sub_start' };
@@ -85,13 +92,48 @@ function rotate(sessionId, ev) {
   fs.renameSync(tmp, file);
 }
 
+const RUNNING = new Set(['thinking', 'tool', 'waiting', 'compacting']);
+const STALE_MS = 30 * 60 * 1000; // no event for this long: the old prompt was abandoned (crash)
+
+// UserPromptSubmit also fires for a message sent WHILE Claude is working (it is queued and
+// absorbed mid-turn). That is the same prompt, so the timer and counters must carry on.
+// It is a genuinely new prompt when the previous one finished, or when the user pressed
+// Esc (Stop never fires on an interrupt; the transcript records it).
+function onPrompt(p, ev) {
+  const prev = reduce(readEvents(p.session_id));
+  if (RUNNING.has(prev.phase) && ev.t - prev.lastEventAt < STALE_MS) {
+    const interruptedAt = lastInterruptAt(p.transcript_path);
+    if (!(interruptedAt && interruptedAt >= prev.startedAt)) {
+      fs.appendFileSync(logPath(p.session_id), JSON.stringify({ t: ev.t, e: 'note', text: ev.text || '' }) + '\n');
+      return maybeAskAi(p.session_id);
+    }
+  }
+  rotate(p.session_id, ev);
+  maybeAskAi(p.session_id);
+}
+
+// estimator=ai: start a background AI estimate when one is due (see lib/ai.js).
+function maybeAskAi(sessionId) {
+  const cfg = require('./lib/config').loadConfig();
+  if (cfg.estimator !== 'ai') return;
+  const ai = require('./lib/ai');
+  const state = reduce(readEvents(sessionId));
+  const reason = ai.askReason(state, require('./lib/estimate').loadStats(), cfg, Date.now());
+  if (reason) ai.requestEstimate(sessionId, reason, state.aiReqs + 1);
+}
+
 function finish(sessionId) {
-  // Feed the history behind time estimates: working time only, per project.
+  // Feed the history behind time estimates: working time only, per project. The prompt's
+  // start time is its id, so a second Stop for the same prompt replaces the first entry.
   try {
     const s = reduce(readEvents(sessionId));
     if (s.startedAt && s.endedAt) {
       const cfg = require('./lib/config').loadConfig();
-      require('./lib/estimate').recordRun(s.cwd, activeMs(s, s.endedAt), cfg);
+      const worked = activeMs(s, s.endedAt);
+      // How the AI's first estimate compared with what really happened, for calibration.
+      const f = s.aiFirst;
+      const ratio = f && f.remMs > 0 && worked > f.at ? (worked - f.at) / f.remMs : 0;
+      require('./lib/estimate').recordRun(s.cwd, worked, cfg, sessionId + ':' + s.startedAt, ratio);
     }
   } catch (_) { /* best effort */ }
 }
@@ -108,6 +150,8 @@ function recordRoot() {
 }
 
 function main(raw) {
+  // The AI estimator's own `claude -p` must never feed back into PromptBar.
+  if (process.env.PROMPT_BAR_CHILD) return;
   if (kind === 'root') return recordRoot();
   let p = {};
   try { p = JSON.parse(raw || '{}'); } catch (_) { return; }
@@ -115,7 +159,7 @@ function main(raw) {
   if (!ev) return;
   ensureDir(STATE_DIR);
   if (ev.e === 'end') { try { fs.unlinkSync(logPath(p.session_id)); } catch (_) { /* gone */ } return; }
-  if (ev.e === 'prompt') return rotate(p.session_id, ev);
+  if (ev.e === 'prompt') return onPrompt(p, ev);
   fs.appendFileSync(logPath(p.session_id), JSON.stringify(ev) + '\n');
   if (ev.e === 'stop' && !ev.err) finish(p.session_id);
 }

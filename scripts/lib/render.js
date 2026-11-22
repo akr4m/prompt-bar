@@ -1,7 +1,8 @@
 'use strict';
 // Pure rendering: (state, progress, config, now) -> one status-line string.
-// The line is built from `cfg.segments` in order. "Head" segments (status, bar, pct,
-// time, source) join with a space so they read as one phrase; the rest use cfg.separator.
+// The line is built from `cfg.segments` in order. A segment listed in ATTACH joins the one
+// before it with a space when that one is among its partners ("⠹ working ▕██▏ 50%",
+// "~53s left (history)"); every other join uses cfg.separator.
 
 const { activeMs } = require('./state');
 
@@ -16,8 +17,8 @@ const SPINNERS = {
   line: ['|', '/', '-', '\\'],
 };
 const GLYPH = {
-  unicode: { waiting: '⏸', done: '✓', error: '✗', agents: '⑂' },
-  ascii: { waiting: '||', done: 'OK', error: 'X', agents: 'agents:' },
+  unicode: { waiting: '⏸', done: '✓', error: '✗', interrupted: '⊘', agents: '⑂' },
+  ascii: { waiting: '||', done: 'OK', error: 'X', interrupted: '--', agents: 'agents:' },
 };
 const ICON = {
   Bash: '$', PowerShell: '$', Read: '⌕', Grep: '⌕', Glob: '⌕', Edit: '✎', Write: '✎', MultiEdit: '✎',
@@ -28,7 +29,13 @@ const ANSI = {
   gray: 90, dim: 2, bold: 1,
 };
 const RESET = '\x1b[0m';
-const HEAD = new Set(['status', 'bar', 'pct', 'time', 'source']);
+const isEnded = (state) => state.phase === 'done' || state.phase === 'interrupted';
+const ATTACH = {
+  bar: new Set(['status']),
+  pct: new Set(['status', 'bar']),
+  time: new Set(['status', 'bar']), // after a percentage, the time reads better as its own part
+  source: new Set(['time']),
+};
 
 function fmtDuration(ms, format = 'short') {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -74,7 +81,7 @@ function bar(pct, soft, cfg, now) {
 // What fills the bar for the chosen measure: { pct, soft } or { pct: null } for a pulse.
 function barFill(prog, cfg) {
   const t = prog.time;
-  const timeFill = t && !t.over ? { pct: (100 * t.activeMs) / t.totalMs, soft: false } : null;
+  const timeFill = t ? { pct: (100 * t.activeMs) / t.totalMs, soft: false } : null;
   if (cfg.measure === 'time') return timeFill || { pct: null };
   if (cfg.measure === 'both' && prog.kind !== 'exact' && timeFill) return timeFill;
   return { pct: prog.pct, soft: prog.kind === 'estimate' };
@@ -95,8 +102,9 @@ const SEG = {
       waiting: [g.waiting, cfg.textWaiting, cfg.colorWaiting],
       done: [g.done, cfg.textDone, cfg.colorDone],
       error: [g.error, cfg.textError, cfg.colorError],
+      interrupted: [g.interrupted, cfg.textInterrupted, cfg.colorInterrupted],
     }[kind] || [spin, cfg.textThinking, cfg.colorThinking];
-    const paused = kind === 'waiting' || kind === 'done' || kind === 'error' || kind === 'compacting';
+    const paused = kind !== 'thinking' && kind !== 'tool';
     const word = cfg.statusText === 'always' || (cfg.statusText === 'paused' && paused) ? look[1] : '';
     const s = [look[0], word].filter(Boolean).join(' ');
     c.bareGlyph = !word;
@@ -105,7 +113,7 @@ const SEG = {
 
   bar(c) {
     const { state, prog, cfg, now } = c;
-    if (cfg.barStyle === 'none' || state.phase === 'done') return [];
+    if (cfg.barStyle === 'none' || isEnded(state)) return [];
     const f = barFill(prog, cfg);
     // While paused, show a frozen bar only when it holds a real amount, never a pulse.
     if (state.phase === 'waiting' && f.pct == null) return [];
@@ -114,7 +122,7 @@ const SEG = {
 
   pct(c) {
     const { state, prog, cfg } = c;
-    if (cfg.measure === 'time' || state.phase === 'done' || prog.pct == null) return [];
+    if (cfg.measure === 'time' || isEnded(state) || prog.pct == null) return [];
     return [prog.kind === 'estimate' ? '~' + prog.pct + '% ' + paint(cfg, 'dim', cfg.textEst) : prog.pct + '%'];
   },
 
@@ -122,20 +130,19 @@ const SEG = {
     const { state, prog, cfg, now } = c;
     const f = (ms) => fmtDuration(ms, cfg.timeFormat);
     // A plain duration (no estimate) is a trailing counter: it goes at the end of the line.
-    if (state.phase === 'done') {
+    if (isEnded(state)) {
       if (cfg.showElapsed) c.tail = paint(cfg, 'dim', f(state.endedAt - state.startedAt));
       return [];
     }
     const act = activeMs(state, now);
     const t = cfg.measure === 'percent' ? null : prog.time;
     if (!t) {
-      if (cfg.showElapsed) c.tail = paint(cfg, 'dim', f(act));
+      if (!cfg.showElapsed) return [];
+      // Measuring time: elapsed is the headline number, so it stays next to the bar.
+      // Measuring percent: it is a trailing counter, like on the finished line.
+      if (cfg.measure !== 'percent') return [f(act)];
+      c.tail = paint(cfg, 'dim', f(act));
       return [];
-    }
-    if (t.over) {
-      return cfg.timeStyle === 'remaining'
-        ? [f(act) + ' ' + paint(cfg, 'dim', cfg.textOver)]
-        : [f(act), paint(cfg, 'dim', cfg.textOver + ' ~' + f(t.totalMs))];
     }
     // Round remaining up so that elapsed + left never falls short of the total.
     const left = '~' + f(Math.ceil(t.remainingMs / 1000) * 1000) + ' ' + cfg.textLeft;
@@ -150,14 +157,15 @@ const SEG = {
   source(c) {
     const { state, prog, cfg } = c;
     const t = prog.time;
-    if (!t || cfg.measure === 'percent' || state.phase === 'done') return [];
-    return [paint(cfg, 'dim', '(' + (t.source === 'tasks' ? cfg.textPace : cfg.textHistory) + ')')];
+    if (!t || cfg.measure === 'percent' || isEnded(state)) return [];
+    const label = { tasks: cfg.textPace, ai: cfg.textAi, history: cfg.textHistory }[t.source] || t.source;
+    return [paint(cfg, 'dim', '(' + label + ')')];
   },
 
   task(c) {
     const { state, cfg } = c;
     const t = state.todo;
-    if (!t || !t.total || state.phase === 'done') return [];
+    if (!t || !t.total || isEnded(state)) return [];
     const label = t.active ? truncate(t.active, cfg.maxLabel) : '';
     const s = [cfg.showTaskCount ? t.done + '/' + t.total : '', label].filter(Boolean).join(' ');
     return s ? [s] : [];
@@ -189,7 +197,7 @@ const SEG = {
 
 function render(state, prog, cfg, now) {
   if (state.phase === 'idle') return '';
-  if (state.phase === 'done' && cfg.doneLinger >= 0 && now - state.endedAt > cfg.doneLinger * 1000) return '';
+  if (isEnded(state) && cfg.doneLinger >= 0 && now - state.endedAt > cfg.doneLinger * 1000) return '';
   const ctx = { state, prog, cfg, now, ascii: cfg.barStyle === 'ascii' };
   const sep = paint(cfg, 'dim', cfg.separator);
   const out = [];
@@ -198,7 +206,7 @@ function render(state, prog, cfg, now) {
     const fn = SEG[name];
     const parts = fn ? fn(ctx) : [];
     if (!parts.length) continue;
-    if (out.length && HEAD.has(name) && HEAD.has(prev)) out[out.length - 1] += ' ' + parts.shift();
+    if (out.length && ATTACH[name] && ATTACH[name].has(prev)) out[out.length - 1] += ' ' + parts.shift();
     out.push(...parts);
     prev = name;
   }

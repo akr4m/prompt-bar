@@ -136,19 +136,27 @@ function demo() {
   const { render } = require('./lib/render');
   const now = Date.now();
   const t0 = now - 47000;
-  // Typical prompt in this demo project: 1m40s of working time.
-  const stats = { v: 2, all: [100000, 100000, 100000], projects: {} };
+  // Past prompts in this demo project: 1m40s of working time each.
+  const stats = { v: 3, all: [100000, 100000, 100000], projects: {} };
+  const task = (t, id, status, subject, form) => ({ t, e: 'task', task: { id, status, subject, form } });
   const scenes = {
+    // Tasks 1 and 2 finished at 15s and 30s: a 15s pace, the current task 17s in.
     'task list': [{ t: t0, e: 'prompt' },
-      { t: t0 + 1, e: 'task', task: { id: '1', status: 'completed', subject: 'Write parser' } },
-      { t: t0 + 2, e: 'task', task: { id: '2', status: 'completed', subject: 'Add tests' } },
-      { t: t0 + 3, e: 'task', task: { id: '3', status: 'in_progress', subject: 'Run tests', form: 'Running tests' } },
-      { t: t0 + 4, e: 'task', task: { id: '4', status: 'pending', subject: 'Update docs' } },
-      { t: t0 + 5, e: 'pre', tool: 'Bash', id: 'a', label: 'npm test' }],
+      task(t0 + 1, '1', 'in_progress', 'Write parser'), task(t0 + 1, '2', 'pending', 'Add tests'),
+      task(t0 + 1, '3', 'pending', 'Run tests'), task(t0 + 1, '4', 'pending', 'Update docs'),
+      task(t0 + 15000, '1', 'completed'), task(t0 + 30000, '2', 'completed'),
+      task(t0 + 30001, '3', 'in_progress', '', 'Running tests'),
+      { t: t0 + 40000, e: 'pre', tool: 'Bash', id: 'a', label: 'npm test' }],
+    // The AI read the prompt and answered 2m30s of work, 2s after it was sent.
+    'ai': [{ t: t0, e: 'prompt' }, { t: t0 + 1, e: 'ai_req', n: 1 }, { t: t0 + 2000, e: 'ai', ms: 150000, at: 0, n: 1 },
+      { t: t0 + 30000, e: 'pre', tool: 'Edit', id: 'f', label: 'checkout.tsx' }],
     'history': [{ t: t0, e: 'prompt' }, { t: t0 + 1, e: 'pre', tool: 'Edit', id: 'b', label: 'render.js' },
       { t: t0 + 2, e: 'post', tool: 'Edit', id: 'b' }, { t: t0 + 3, e: 'pre', tool: 'Grep', id: 'c', label: 'estimate' }],
-    'over est': [{ t: now - 130000, e: 'prompt' }, { t: now - 1000, e: 'pre', tool: 'Bash', id: 'd', label: 'npm run build' }],
-    'waiting': [{ t: t0, e: 'prompt' }, { t: t0 + 1, e: 'wait' }],
+    // Has run longer than every past prompt: no honest estimate left, so none is shown.
+    'long': [{ t: now - 130000, e: 'prompt' }, { t: now - 1000, e: 'pre', tool: 'Bash', id: 'd', label: 'npm run build' }],
+    'waiting': [{ t: t0, e: 'prompt' }, { t: t0 + 31000, e: 'wait' }],
+    'cancelled': [{ t: now - 30000, e: 'prompt' }, { t: now - 20000, e: 'pre', tool: 'Bash', id: 'e', label: 'npm test' },
+      { t: now - 8000, e: 'interrupt', tool: 'Bash', id: 'e' }],
     'done': [{ t: now - 72000, e: 'prompt' }, { t: now - 50000, e: 'post', tool: 'Read', id: 'x' }, { t: now, e: 'stop' }],
   };
   const base = loadConfig();
